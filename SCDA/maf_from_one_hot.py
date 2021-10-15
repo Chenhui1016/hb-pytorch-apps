@@ -38,9 +38,12 @@ if __name__ == '__main__':
     tensor_data = torch.from_numpy(data_frame.values)
     one_hot = nn.functional.one_hot(tensor_data).float()
 
+    print('Computing mafs...')
     mafs = compute_mafs(one_hot)
 
-    with open(f'{input_path}.mafs', 'w') as out_file:
+    output_path = f'{input_path}.mafs'
+    print(f'Writing mafs to {output_path}')
+    with open(output_path, 'w') as out_file:
         snp_ids = data_frame.columns.to_list()
-        out_file.write(','.join(snp_ids) + '\n')
-        out_file.write(','.join(mafs))
+        for index, id in enumerate(snp_ids):
+            out_file.write(f'{id},{mafs[index]}\n')

@@ -49,7 +49,5 @@ if __name__ == '__main__':
     output_path = f'{input_path}.mafs'
     print(f'Writing mafs to {output_path}')
     with open(output_path, 'w') as out_file:
-        # out_file.write(','.join(results.keys()) + '\n')
-        # out_file.write(','.join(list(results.values())))
         for id in results:
             out_file.write(f'{id},{results[id]}\n')
