@@ -24,8 +24,12 @@ parser.add_argument(
     help='ending position of the extracted sublist (inclusive)'
 )
 parser.add_argument(
-    '--snp_id_column', type=int, default=2,
+    '--snp_id_column', type=int, default=1, # 2 in version a, 1 in version b
     help='column within the vcf that contains the snp id'
+)
+parser.add_argument(
+    '--ref_column', type=int, default=3,
+    help='column within the snp ref'
 )
 parser.add_argument(
     '--samples_start_column', type=int, default=9,
@@ -70,7 +74,7 @@ if __name__ == '__main__':
             if current_snp_index < args.start_snp:
                 continue # skip SNPs before the starting SNP
             fields = line.split()
-            snps.append(fields[args.snp_id_column])
+            snps.append(f'{fields[args.ref_column]}{fields[args.snp_id_column]}')
             variant_genotypes = fields[args.samples_start_column:]
             # separate the two haplotypes for each sample genotype
             variant_haps = [split_haplotypes(g) for g in variant_genotypes]

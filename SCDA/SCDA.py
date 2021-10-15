@@ -169,7 +169,7 @@ def print_loss_by_maf(subset_name, epoch, losses, accuracies, mafs, snps):
     avg_loss_by_feat = np.mean(losses, axis=0)
 
     for index, snp_id in enumerate(snps):
-        maf = mafs[snp_id][0]
+        maf = mafs[1][snp_id]
         if maf < 0.005:
             bucket = VERY_LOW
         elif maf < 0.05:
@@ -259,7 +259,7 @@ if __name__ == '__main__':
 
     input_path = args.input
     whole_dataframe = pd.read_csv(input_path, sep='\t', index_col=0)
-    mafs = pd.read_csv(args.mafs_path)
+    mafs = pd.read_csv(args.mafs_path, header=None, index_col=0)
 
     # make it fit for HammerBlade
     if args.hammerblade:
