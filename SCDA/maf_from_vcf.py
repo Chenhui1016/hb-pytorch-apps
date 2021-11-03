@@ -16,8 +16,12 @@ parser.add_argument(
     'input', help='path to the dataset (vcf)'
 )
 parser.add_argument(
-    '--snp_id_column', type=int, default=2,
+    '--snp_id_column', type=int, default=1, # 2 in version a, 1 in version b
     help='column within the vcf that contains the snp id'
+)
+parser.add_argument(
+    '--ref_column', type=int, default=3,
+    help='column within the snp ref'
 )
 parser.add_argument(
     '--info_column', type=int, default=7,
@@ -31,15 +35,19 @@ if __name__ == '__main__':
     input_path = args.input
 
     results = {}
+    print('Extracting mafs...')
     with open(input_path, 'r') as inputs:
         for line in inputs:
             if line[0] != '#':
                 fields = line.split()
                 snp_id = fields[args.snp_id_column]
+                snp_ref = fields[args.ref_column]
                 info = fields[args.info_column]
                 freq = re.search(r'AF=([\d.]+)[;,]', info).group(1)
-                results[snp_id] = freq
+                results[f'{snp_ref}{snp_id}'] = freq
 
-    with open(f'{input_path}.mafs', 'w') as out_file:
-        out_file.write(','.join(results.keys()) + '\n')
-        out_file.write(','.join(list(results.values())))
+    output_path = f'{input_path}.mafs'
+    print(f'Writing mafs to {output_path}')
+    with open(output_path, 'w') as out_file:
+        for id in results:
+            out_file.write(f'{id},{results[id]}\n')
