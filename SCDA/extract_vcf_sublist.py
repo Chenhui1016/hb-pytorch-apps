@@ -92,7 +92,7 @@ if __name__ == '__main__':
     # Note: this is a plain text file with haps extension,
     # it doesn't conform to a particular haps format
     output_path = f'{input_path}-sub{args.start_snp}-{args.end_snp}.haps'
-    print(f'Writing sublist to {output_path}')
+    print(f'Writing subset haplotypes to {output_path}')
     with open(output_path, 'wt') as out_file:
         out_file.write('SAMID\t' + '\t'.join(snps) + '\n')
         for sample_id in haplotypes:
