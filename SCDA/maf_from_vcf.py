@@ -1,5 +1,6 @@
 import argparse
 import re
+import gzip
 
 
 parser = argparse.ArgumentParser(
@@ -13,7 +14,7 @@ parser = argparse.ArgumentParser(
     '''
 )
 parser.add_argument(
-    'input', help='path to the dataset (vcf)'
+    'input', help='path to the dataset (vcf.gz)'
 )
 parser.add_argument(
     '--snp_id_column', type=int, default=1, # 2 in version a, 1 in version b
@@ -36,7 +37,7 @@ if __name__ == '__main__':
 
     results = {}
     print('Extracting mafs...')
-    with open(input_path, 'r') as inputs:
+    with gzip.open(input_path, 'rt') as inputs:
         for line in inputs:
             if line[0] != '#':
                 fields = line.split()
@@ -48,6 +49,6 @@ if __name__ == '__main__':
 
     output_path = f'{input_path}.mafs'
     print(f'Writing mafs to {output_path}')
-    with open(output_path, 'w') as out_file:
+    with open(output_path, 'wt') as out_file:
         for id in results:
             out_file.write(f'{id},{results[id]}\n')

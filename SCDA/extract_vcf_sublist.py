@@ -1,5 +1,6 @@
 import argparse
 import re
+import gzip
 
 
 parser = argparse.ArgumentParser(
@@ -13,7 +14,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument(
     'input',
-    help='path to the dataset (vcf)'
+    help='path to the dataset (vcf.gz)'
 )
 parser.add_argument(
     'start_snp', type=int,
@@ -57,7 +58,7 @@ if __name__ == '__main__':
     snps = []
 
     print(f'Parsing SNPs {args.start_snp} to {args.end_snp}...')
-    with open(input_path, 'r') as inputs:
+    with gzip.open(input_path, 'rt') as inputs:
         current_snp_index = 0
         for line in inputs:
             if line[0:2] == '##':
@@ -92,7 +93,7 @@ if __name__ == '__main__':
     # it doesn't conform to a particular haps format
     output_path = f'{input_path}-sub{args.start_snp}-{args.end_snp}.haps'
     print(f'Writing sublist to {output_path}')
-    with open(output_path, 'w') as out_file:
+    with open(output_path, 'wt') as out_file:
         out_file.write('SAMID\t' + '\t'.join(snps) + '\n')
         for sample_id in haplotypes:
             out_file.write(sample_id + '\t' + '\t'.join(haplotypes[sample_id]) + '\n')
