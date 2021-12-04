@@ -141,7 +141,7 @@ def dataframe_to_tensor(df):
     return torch.from_numpy(df.values)
 
 # compute loss to show during training
-# use reduction=none to keep individual feat losses separate and
+# use reduction=none to keep individual feat (SNP) losses separate and
 # aggregate by MAF later
 # TODO: add weight for unbalanced classes?
 criterion_for_display = nn.CrossEntropyLoss(reduction='none')
@@ -166,9 +166,10 @@ def batch_accuracy(z, y):
 def get_confusion_matrix_by_snp(z, y, accumulator):
     batch_size, num_variants, num_snps = z.size()
     _, predicted_class = torch.max(z, 1) # get index of the class with max score
-    # true_positives = predicted_class == y
-    # for each variant other than 0 (missing), get the TP, etc.
+
+    # for each variant other than 0 (missing), get the TP, TN, FP and FN.
     for variant in range(1, num_variants):
+        # first initialize if not defined
         if variant not in accumulator:
             accumulator[variant] = {
                 'true_positives': np.zeros(num_snps),
@@ -176,29 +177,33 @@ def get_confusion_matrix_by_snp(z, y, accumulator):
                 'true_negatives': np.zeros(num_snps),
                 'false_negatives': np.zeros(num_snps),
             }
-        target_postv_for_variant = y == variant
-        predicted_postv_for_variant = predicted_class == variant
+        target_postv_for_variant = (y == variant).cpu()
+        predicted_postv_for_variant = (predicted_class == variant).cpu()
         target_negtv_for_variant = np.logical_not(target_postv_for_variant)
         predicted_negtv_for_variant = np.logical_not(predicted_postv_for_variant)
+        # sum within batch and accumulate
         accumulator[variant]['true_positives'] += np.logical_and(
             predicted_postv_for_variant, target_postv_for_variant
-        ).sum(dim=0).cpu().numpy()
+        ).sum(dim=0).numpy()
         accumulator[variant]['false_positives'] += np.logical_and(
             predicted_postv_for_variant, target_negtv_for_variant
-        ).sum(dim=0).cpu().numpy()
+        ).sum(dim=0).numpy()
         accumulator[variant]['true_negatives'] += np.logical_and(
             predicted_negtv_for_variant, target_negtv_for_variant
-        ).sum(dim=0).cpu().numpy()
+        ).sum(dim=0).numpy()
         accumulator[variant]['false_negatives'] += np.logical_and(
             predicted_negtv_for_variant, target_postv_for_variant
-        ).sum(dim=0).cpu().numpy()
+        ).sum(dim=0).numpy()
 
 # for each class, compute Matthews correlation coefficient using the existing
 # confusion matrix and store in the metrics dict
 def compute_metrics(conf_matrix_by_snp):
-    metrics = {}
+    metrics = {
+        metric: {} for metric in [
+            'support', 'mcc', 'precision', 'recall', 'accuracy', 'f1-score'
+        ]
+    }
     for variant in conf_matrix_by_snp:
-        metrics[variant] = {}
         conf_matrix = conf_matrix_by_snp[variant]
 
         positives = (
@@ -217,7 +222,7 @@ def compute_metrics(conf_matrix_by_snp):
             positives + negatives
         )
 
-        metrics[variant]['positives'] = positives
+        metrics['support'][variant] = positives
 
         mcc_numerator = (
             (conf_matrix['true_positives'] * conf_matrix['true_negatives'])
@@ -229,28 +234,28 @@ def compute_metrics(conf_matrix_by_snp):
             * negatives
             * predicted_negatives
         )
-        metrics[variant]['mcc'] = np.divide(
+        metrics['mcc'][variant] = np.divide(
             mcc_numerator,
             mcc_denominator,
             out=np.zeros_like(mcc_numerator),
             where=mcc_denominator!=0
         )
 
-        metrics[variant]['precision'] = np.divide(
+        metrics['precision'][variant] = np.divide(
             conf_matrix['true_positives'],
             predicted_positives,
             out=np.zeros_like(predicted_positives),
             where=predicted_positives!=0
         )
 
-        metrics[variant]['recall'] = np.divide(
+        metrics['recall'][variant] = np.divide(
             conf_matrix['true_positives'],
             positives,
             out=np.zeros_like(positives),
             where=positives!=0
         )
 
-        metrics[variant]['accuracy'] = np.divide(
+        metrics['accuracy'][variant] = np.divide(
             conf_matrix['true_positives'] + conf_matrix['true_negatives'],
             total,
             out=np.zeros_like(total),
@@ -258,12 +263,12 @@ def compute_metrics(conf_matrix_by_snp):
         )
 
         f1_numerator = (
-            2 * metrics[variant]['precision'] * metrics[variant]['recall']
+            2 * metrics['precision'][variant] * metrics['recall'][variant]
         )
         f1_denominator = (
-            metrics[variant]['precision'] + metrics[variant]['recall']
+            metrics['precision'][variant] + metrics['recall'][variant]
         )
-        metrics[variant]['f1-score'] = np.divide(
+        metrics['f1-score'][variant] = np.divide(
             f1_numerator,
             f1_denominator,
             out=np.zeros_like(f1_denominator),
@@ -291,11 +296,12 @@ def get_loss_by_maf(
     # initialize metrics accumulator for each MAF category
     metrics_by_maf = {}
     for bucket in buckets:
-        metrics_by_maf[bucket] = {}
-        for variant in metrics_by_snp:
-            metrics_by_maf[bucket][variant] = {
-                metric: 0.0 for metric in metrics_by_snp[variant]
-            }
+        metrics_by_maf[bucket] = {
+            metric: {
+                'macro': 0.0,
+                'micro': 0.0,
+            } for metric in metrics_by_snp if metric != 'support'
+        }
 
     for index, snp_id in enumerate(snps):
         maf = mafs[1][snp_id]
@@ -305,11 +311,20 @@ def get_loss_by_maf(
             bucket = LOW
         else:
             bucket = HIGH
+        # TODO: see how to remove SNPs with a single variant due to dataset splitting
         buckets[bucket] += [index]
         loss_by_maf[bucket] += avg_loss_by_feat[index]
-        for variant in metrics_by_snp:
-            for metric in metrics_by_snp[variant]:
-                metrics_by_maf[bucket][variant][metric] += metrics_by_snp[variant][metric][index]
+        for metric in metrics_by_maf[bucket]:
+            scores = []
+            supports = []
+            for variant in metrics_by_snp[metric]:
+                if metrics_by_snp['support'][variant][index] > 0:
+                    scores += [metrics_by_snp[metric][variant][index]]
+                    supports += [metrics_by_snp['support'][variant][index]]
+            macro_average = np.mean(scores)
+            micro_average = np.dot(scores, supports) / sum(supports)
+            metrics_by_maf[bucket][metric]['macro'] += macro_average
+            metrics_by_maf[bucket][metric]['micro'] += micro_average
 
     snps_by_category = {
         bucket: len(buckets[bucket]) for bucket in buckets
@@ -319,11 +334,12 @@ def get_loss_by_maf(
     for bucket in buckets:
         snps_in_category = snps_by_category[bucket]
 
-        loss_by_maf[bucket] /= snps_in_category
+        if snps_in_category > 0:
+            loss_by_maf[bucket] /= snps_in_category
 
-        for variant in metrics_by_snp:
-            for metric in metrics_by_snp[variant]:
-                metrics_by_maf[bucket][variant][metric] /= snps_in_category
+            for metric in metrics_by_maf[bucket]:
+                metrics_by_maf[bucket][metric]['macro'] /= snps_in_category
+                metrics_by_maf[bucket][metric]['micro'] /= snps_in_category
 
     print(
         f'Epoch {epoch}; {subset_name} set\n'
@@ -336,26 +352,26 @@ def get_loss_by_maf(
 
     return loss_by_maf, metrics_by_maf
 
-def plot_metric(history, dataset, metric):
-    training_precision_history = {
-        bucket: {
-            variant: [] for variant in history[dataset][0][bucket]
-        } for bucket in history[dataset][0]
+def plot_metric(histories, dataset, metric, average_type='macro'):
+    history = histories[dataset]
+    # split by MAF
+    metric_history = {
+        bucket: [] for bucket in history[0]
     }
-    for epoch_metrics in history[dataset]:
+    # extract score for all epochs for the requested metric
+    for epoch_metrics in history:
         for bucket in epoch_metrics:
-            for variant in epoch_metrics[bucket]:
-                training_precision_history[bucket][variant].append(
-                    epoch_metrics[bucket][variant][metric]
-                )
-    for bucket in training_precision_history:
-        plt.figure()
-        for variant in training_precision_history[bucket]:
-            precision_line = training_precision_history[bucket][variant]
-            plt.plot(range(len(history[dataset])), precision_line, label=f'variant {variant}')
-        plt.title(f'{dataset} {metric} history for {bucket} MAF range')
-        plt.legend()
-        plt.show(block=True)
+            metric_history[bucket].append(
+                epoch_metrics[bucket][metric][average_type]
+            )
+    plt.figure()
+    for bucket in metric_history:
+        line = metric_history[bucket]
+        plt.plot(range(len(history)), line, label=bucket)
+
+    plt.title(f'{dataset} {metric} history')
+    plt.legend()
+    plt.show(block=True)
 
 # this approach is faster when the percentage of missing SNPs in the
 # generated noisy input is high
