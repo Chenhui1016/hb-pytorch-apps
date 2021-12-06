@@ -1,4 +1,5 @@
 import argparse
+import sys
 import time
 import torch
 from torch import nn
@@ -402,7 +403,6 @@ class HighMissingDataset(torch.utils.data.Dataset):
                 noisy_input[c][snp_index] = one_hot_target[c][snp_index]
         return noisy_input, int_target
 
-
 # this approach is faster when the percentage of missing SNPs in the
 # generated noisy input is low
 class LowMissingDataset(torch.utils.data.Dataset):
@@ -434,6 +434,21 @@ class LowMissingDataset(torch.utils.data.Dataset):
                 noisy_input[c][snp_index] = 0.0
         return noisy_input, int_target
 
+# Find SNPs that have at least 2 variants in the training set;
+# the invalid ones (with a single variant) arise due to the dataset splitting
+def find_valid_snps(one_hot_data):
+    valid_indexes = []
+    total_samples, total_snps, total_classes = one_hot_data.size()
+    samples_per_variant = one_hot_data.sum(dim=0)
+    for index in range(total_snps):
+        valid = True
+        for in_variant in samples_per_variant[index]:
+            if in_variant == total_samples:
+                valid = False
+                break
+        if valid:
+            valid_indexes += [index]
+    return valid_indexes
 
 #-------------------------------------------------------------
 # Main
@@ -464,10 +479,25 @@ if __name__ == '__main__':
     train_df, valid_df = train_test_split(
         learning_df, test_size=0.2, random_state=SEED
     )
+
     training_tensor = dataframe_to_tensor(train_df)
-    validation_tensor = dataframe_to_tensor(valid_df)
     training_one_hot = nn.functional.one_hot(training_tensor).float()
+
+    # this is only necessary for the training set because during
+    valid_indexes = find_valid_snps(training_one_hot)
+    if len(valid_indexes) == 0:
+        sys.exit('No valid SNPs found in the training set')
+    print(f'Number of invalid SNPs: {training_one_hot.size(1) - len(valid_indexes)}')
+    snp_ids = whole_dataframe.columns.values[valid_indexes]
+
+    training_tensor = training_tensor[:, valid_indexes]
+    training_one_hot = training_one_hot[:, valid_indexes, :]
+
+    validation_tensor = dataframe_to_tensor(valid_df)[:, valid_indexes]
     validation_one_hot = nn.functional.one_hot(validation_tensor).float()
+
+    # TODO: extract valid SNPs from the test set too
+
     print(f'training set shape: {str(training_one_hot.size())}')
     print(f'validation set shape: {str(validation_one_hot.size())}')
 
@@ -521,8 +551,6 @@ if __name__ == '__main__':
     # train the model
     criterion = nn.CrossEntropyLoss() # TODO: add weight for unbalanced classes?
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-
-    snp_ids = whole_dataframe.columns.values
 
     time_before_training = time.time()
     history = {
