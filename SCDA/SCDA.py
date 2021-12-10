@@ -132,6 +132,57 @@ class SCDA(nn.Module):
         x = self.decoder(x)
         return x
 
+#--------------------------------------------------------------#
+# Fully Connected Denoising Autoencoder v1                     #
+#--------------------------------------------------------------#
+
+class FCDAv1(nn.Module):
+    def __init__(
+            self, in_feats, hidden_feats
+    ):
+        super(FCDAv1, self).__init__()
+        # encoder
+        self.encoder = nn.Sequential(
+            nn.Linear(in_feats, hidden_feats),
+            nn.ReLU(),
+        )
+        # decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden_feats, in_feats),
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+
+#--------------------------------------------------------------#
+# Fully Connected Denoising Autoencoder v2                     #
+#--------------------------------------------------------------#
+
+class FCDAv2(nn.Module):
+    def __init__(
+            self, num_classes, in_feats, hidden_feats
+    ):
+        super(FCDAv2, self).__init__()
+        # encoder
+        self.encoder = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(num_classes * in_feats, hidden_feats),
+            nn.ReLU(),
+        )
+        # decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(hidden_feats, num_classes * in_feats),
+            nn.Unflatten(-1, [num_classes, in_feats])
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
 
 #-------------------------------------------------------------
 # Helpers
@@ -501,10 +552,19 @@ if __name__ == '__main__':
     print(f'training set shape: {str(training_one_hot.size())}')
     print(f'validation set shape: {str(validation_one_hot.size())}')
 
-    # init SCDA model
+    num_samples, num_features, num_classes = training_one_hot.size()
+
+    # init FCDAv1 model
+    # model = FCDAv1(
+    #     num_features, 20
+    # )
+    # init FCDAv2 model
+    # model = FCDAv2(
+    #     num_classes, num_features, 20
+    # )
+    # # init SCDA model
     model = SCDA(
-        training_one_hot.size(-1), args.channels, args.dropout_amount,
-        args.filter_size
+        num_classes, args.channels, args.dropout_amount, args.filter_size
     )
     if args.hammerblade:
         device = torch.device('hammerblade')
