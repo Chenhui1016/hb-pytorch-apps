@@ -1,6 +1,6 @@
 import argparse
-import re
 import gzip
+from tqdm import tqdm
 
 
 parser = argparse.ArgumentParser(
@@ -53,7 +53,6 @@ if __name__ == '__main__':
 
     input_path = args.input
 
-    haplotypes = {}
     individuals = []
     snps = []
 
@@ -66,26 +65,13 @@ if __name__ == '__main__':
             if line[0] == '#':
                 # take the sample IDs
                 individuals = line.split()[args.samples_start_column:]
-                # create empty list for each haplotype of each sample
-                for sample in individuals:
-                    haplotypes[first_haplotype_name(sample)] = []
-                    haplotypes[second_haplotype_name(sample)] = []
                 continue # then skip to the next line
             current_snp_index += 1
             if current_snp_index < args.start_snp:
                 continue # skip SNPs before the starting SNP
             fields = line.split()
+            # store the relevant SNP IDs for the header of the output file
             snps.append(f'{fields[args.ref_column]}{fields[args.snp_id_column]}')
-            variant_genotypes = fields[args.samples_start_column:]
-            # separate the two haplotypes for each sample genotype
-            variant_haps = [split_haplotypes(g) for g in variant_genotypes]
-            for index, sample in enumerate(individuals):
-                haplotypes[first_haplotype_name(sample)].append(
-                    variant_haps[index][0]
-                )
-                haplotypes[second_haplotype_name(sample)].append(
-                    variant_haps[index][1]
-                )
             if current_snp_index == args.end_snp:
                 break # exit after the ending SNP is processed
 
@@ -95,5 +81,29 @@ if __name__ == '__main__':
     print(f'Writing subset haplotypes to {output_path}')
     with open(output_path, 'wt') as out_file:
         out_file.write('SAMID\t' + '\t'.join(snps) + '\n')
-        for sample_id in haplotypes:
-            out_file.write(sample_id + '\t' + '\t'.join(haplotypes[sample_id]) + '\n')
+        for index, sample in tqdm(enumerate(individuals), total=len(individuals)):
+            first_haplotype = []
+            second_haplotype = []
+            # process one sample at a time and write it to the output file right
+            # away in order to use less RAM
+            with gzip.open(input_path, 'rt') as inputs:
+                current_snp_index = 0
+                for line in inputs:
+                    if line[0] == '#':
+                        continue
+                    current_snp_index += 1
+                    if current_snp_index < args.start_snp:
+                        continue
+                    fields = line.split()
+                    # separate the two haplotypes for each sample genotype
+                    sample_haplotyes = split_haplotypes(fields[args.samples_start_column + index])
+                    first_haplotype.append(sample_haplotyes[0])
+                    second_haplotype.append(sample_haplotyes[1])
+
+                    if current_snp_index == args.end_snp:
+                        break # exit after the ending SNP is processed
+
+            out_file.write(first_haplotype_name(sample) + '\t' + '\t'.join(first_haplotype) + '\n')
+            out_file.write(second_haplotype_name(sample) + '\t' + '\t'.join(second_haplotype) + '\n')
+            
+            
