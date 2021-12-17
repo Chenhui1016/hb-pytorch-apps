@@ -424,6 +424,7 @@ def plot_metric(histories, dataset, metric, average_type='macro'):
     plt.title(f'{dataset} {metric} history')
     plt.legend()
     plt.show(block=True)
+    #plt.savefig(f'Results/{dataset}_{metric}_history.png')
 
 # this approach is faster when the percentage of missing SNPs in the
 # generated noisy input is high

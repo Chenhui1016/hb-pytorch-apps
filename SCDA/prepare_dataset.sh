@@ -3,7 +3,7 @@ GREEN='\033[1;32m'
 CYAN='\033[1;36m'
 NC='\033[0m' # No Color
 
-ENV_NAME="scdaTorch"
+ENV_NAME="test"
 
 if ! (return 0 2>/dev/null) ; then
     # If return is used in the top-level scope of a non-sourced script,
