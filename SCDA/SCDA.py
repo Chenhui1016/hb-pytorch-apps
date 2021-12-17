@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import json
 from matplotlib import pyplot as plt
+from pathlib import Path
 
 # specify a seed for repeating the exact dataset splits
 SEED = 28213
@@ -29,6 +30,10 @@ parser.add_argument(
 parser.add_argument(
     'mafs_path',
     help='path to the mafs extracted with the scripts in this dir (maf_from_xxx)'
+)
+parser.add_argument(
+    '--results_path',
+    help='path where the results should be saved'
 )
 parser.add_argument(
     '--plot', default=False, action='store_true',
@@ -174,7 +179,44 @@ class FCDAv2(nn.Module):
         )
         # decoder
         self.decoder = nn.Sequential(
+            # nn.Dropout(0.1),
             nn.Linear(hidden_feats, num_classes * in_feats),
+            nn.Unflatten(-1, [num_classes, in_feats])
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+
+#--------------------------------------------------------------#
+# Fully Connected Denoising Autoencoder v3                     #
+#--------------------------------------------------------------#
+
+class FCDAv3(nn.Module):
+    def __init__(
+            self, num_classes, in_feats, hidden_feats
+    ):
+        second_feats, third_feats = hidden_feats
+        # dropout_amount = 0.25
+        super(FCDAv3, self).__init__()
+        # encoder
+        self.encoder = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(num_classes * in_feats, second_feats),
+            nn.ReLU(),
+            # nn.Dropout(dropout_amount),
+            nn.Linear(second_feats, third_feats),
+            nn.ReLU(),
+            # nn.Dropout(dropout_amount),
+        )
+        # decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(third_feats, second_feats),
+            nn.ReLU(),
+            # nn.Dropout(dropout_amount),
+            nn.Linear(second_feats, num_classes * in_feats),
             nn.Unflatten(-1, [num_classes, in_feats])
         )
 
@@ -252,7 +294,8 @@ def get_confusion_matrix_by_snp(z, y, accumulator):
 def compute_metrics(conf_matrix_by_snp):
     metrics = {
         metric: {} for metric in [
-            'support', 'mcc', 'precision', 'recall', 'accuracy', 'f1-score'
+            'support', 'mcc', 'accuracy',
+            'precision', 'recall', 'f1-score'
         ]
     }
     for variant in conf_matrix_by_snp:
@@ -404,7 +447,9 @@ def get_loss_by_maf(
 
     return loss_by_maf, metrics_by_maf
 
-def plot_metric(histories, dataset, metric, average_type='macro'):
+def plot_metric(
+        histories, dataset, metric, average_type='macro', results_path=None
+    ):
     history = histories[dataset]
     # split by MAF
     metric_history = {
@@ -423,6 +468,9 @@ def plot_metric(histories, dataset, metric, average_type='macro'):
 
     plt.title(f'{dataset} {metric} history')
     plt.legend()
+    if results_path:
+        plt.savefig(f'{results_path}/{dataset}-{metric}.svg')
+    # plt.show(block=True)
     plt.show(block=True)
 
 # this approach is faster when the percentage of missing SNPs in the
@@ -556,16 +604,21 @@ if __name__ == '__main__':
 
     # init FCDAv1 model
     # model = FCDAv1(
-    #     num_features, 20
+    #     num_features, 60
     # )
     # init FCDAv2 model
     # model = FCDAv2(
-    #     num_classes, num_features, 20
+    #     num_classes, num_features, 100
+    # )
+    # init FCDAv3 model
+    # model = FCDAv3(
+    #     num_classes, num_features, [300, 20]
     # )
     # # init SCDA model
     model = SCDA(
         num_classes, args.channels, args.dropout_amount, args.filter_size
     )
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if args.hammerblade:
         device = torch.device('hammerblade')
     else:
@@ -573,7 +626,17 @@ if __name__ == '__main__':
     model.to(device)
     print()
     print(model)
+    print(f'Number of parameters: {num_params}')
     print()
+
+    results_path = args.results_path
+    if results_path:
+        print(f'Results will be written to {results_path}')
+        Path(results_path).mkdir(parents=True, exist_ok=True)
+        with open(f'{results_path}/model-info.txt', 'w') as model_file:
+            model_file.write(str(model))
+            model_file.write(f'\nNumber of parameters: {num_params}\n')
+            model_file.write(str(args))
 
     # convert channel-last to channel-first
     # permute required because conv1d expects input of size
@@ -680,8 +743,18 @@ if __name__ == '__main__':
         f'Total training time (seconds): {end_time - time_before_training}'
     )
 
+    if results_path:
+        with open(f'{results_path}/aggregated-metrics-history.txt', 'w') as model_file:
+            model_file.write(str(history))
+
     if args.plot:
-        plot_metric(history, 'training', 'mcc')
-        plot_metric(history, 'training', 'accuracy')
-        plot_metric(history, 'validation', 'mcc')
-        plot_metric(history, 'validation', 'accuracy')
+        plot_metric(history, 'training', 'mcc', results_path=results_path)
+        plot_metric(history, 'training', 'accuracy', results_path=results_path)
+        plot_metric(history, 'training', 'precision', results_path=results_path)
+        plot_metric(history, 'training', 'recall', results_path=results_path)
+        plot_metric(history, 'training', 'f1-score', results_path=results_path)
+        plot_metric(history, 'validation', 'mcc', results_path=results_path)
+        plot_metric(history, 'validation', 'accuracy', results_path=results_path)
+        plot_metric(history, 'validation', 'precision', results_path=results_path)
+        plot_metric(history, 'validation', 'recall', results_path=results_path)
+        plot_metric(history, 'validation', 'f1-score', results_path=results_path)
