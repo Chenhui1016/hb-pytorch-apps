@@ -24,18 +24,8 @@ parser.add_argument(
     'end_snp', type=int,
     help='ending position of the extracted sublist (inclusive)'
 )
-parser.add_argument(
-    '--snp_id_column', type=int, default=1, # 2 in version a, 1 in version b
-    help='column within the vcf that contains the snp id'
-)
-parser.add_argument(
-    '--ref_column', type=int, default=3,
-    help='column within the snp ref'
-)
-parser.add_argument(
-    '--samples_start_column', type=int, default=9,
-    help='column within the vcf from which the sample data starts'
-)
+
+SAMPLES_START_COLUMN = 9
 
 
 def split_haplotypes(genotype):
@@ -64,14 +54,18 @@ if __name__ == '__main__':
                 continue # skip metadata lines
             if line[0] == '#':
                 # take the sample IDs
-                individuals = line.split()[args.samples_start_column:]
+                individuals = line.split()[SAMPLES_START_COLUMN:]
                 continue # then skip to the next line
             current_snp_index += 1
             if current_snp_index < args.start_snp:
                 continue # skip SNPs before the starting SNP
             fields = line.split()
+            chromosome = fields[0]
+            position = fields[1]
+            ref = fields[3]
+            alt = fields[4]
             # store the relevant SNP IDs for the header of the output file
-            snps.append(f'{fields[args.ref_column]}{fields[args.snp_id_column]}')
+            snps.append(f'{chromosome}:{position}_{ref}_{alt}')
             if current_snp_index == args.end_snp:
                 break # exit after the ending SNP is processed
 
@@ -96,7 +90,7 @@ if __name__ == '__main__':
                         continue
                     fields = line.split()
                     # separate the two haplotypes for each sample genotype
-                    sample_haplotyes = split_haplotypes(fields[args.samples_start_column + index])
+                    sample_haplotyes = split_haplotypes(fields[SAMPLES_START_COLUMN + index])
                     first_haplotype.append(sample_haplotyes[0])
                     second_haplotype.append(sample_haplotyes[1])
 
@@ -105,5 +99,3 @@ if __name__ == '__main__':
 
             out_file.write(first_haplotype_name(sample) + '\t' + '\t'.join(first_haplotype) + '\n')
             out_file.write(second_haplotype_name(sample) + '\t' + '\t'.join(second_haplotype) + '\n')
-            
-            

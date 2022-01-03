@@ -16,18 +16,6 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     'input', help='path to the dataset (vcf.gz)'
 )
-parser.add_argument(
-    '--snp_id_column', type=int, default=1, # 2 in version a, 1 in version b
-    help='column within the vcf that contains the snp id'
-)
-parser.add_argument(
-    '--ref_column', type=int, default=3,
-    help='column within the snp ref'
-)
-parser.add_argument(
-    '--info_column', type=int, default=7,
-    help='column within the vcf that contains the info field'
-)
 
 
 if __name__ == '__main__':
@@ -41,11 +29,13 @@ if __name__ == '__main__':
         for line in inputs:
             if line[0] != '#':
                 fields = line.split()
-                snp_id = fields[args.snp_id_column]
-                snp_ref = fields[args.ref_column]
-                info = fields[args.info_column]
+                chromosome = fields[0]
+                position = fields[1]
+                ref = fields[3]
+                alt = fields[4]
+                info = fields[7]
                 freq = re.search(r'AF=([\d.]+)[;,]', info).group(1)
-                results[f'{snp_ref}{snp_id}'] = freq
+                results[f'{chromosome}:{position}_{ref}_{alt}'] = freq
 
     output_path = f'{input_path}.mafs'
     print(f'Writing mafs to {output_path}')
