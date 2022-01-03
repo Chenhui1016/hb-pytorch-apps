@@ -1,7 +1,7 @@
 import argparse
 import gzip
 from tqdm import tqdm
-
+from math import ceil
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -27,6 +27,10 @@ parser.add_argument(
 
 SAMPLES_START_COLUMN = 9
 
+def batch(iterable, n=1):
+    l = len(iterable)
+    for ndx in range(0, l, n):
+        yield iterable[ndx:min(ndx + n, l)]
 
 def split_haplotypes(genotype):
     # add 1 to the vcf variant in order to reserve 0 for the missing data
@@ -75,11 +79,14 @@ if __name__ == '__main__':
     print(f'Writing subset haplotypes to {output_path}')
     with open(output_path, 'wt') as out_file:
         out_file.write('SAMID\t' + '\t'.join(snps) + '\n')
-        for index, sample in tqdm(enumerate(individuals), total=len(individuals)):
-            first_haplotype = []
-            second_haplotype = []
-            # process one sample at a time and write it to the output file right
-            # away in order to use less RAM
+        batch_size = 200
+        # process in batches and write to the output file right away in order to use less RAM
+        for batch_index, batch_samples in tqdm(enumerate(batch(individuals, batch_size)), total=ceil(len(individuals)/batch_size)):
+            batch_haplotypes = {}
+            for sample in batch_samples:
+                batch_haplotypes[first_haplotype_name(sample)] = []
+                batch_haplotypes[second_haplotype_name(sample)] = []
+
             with gzip.open(input_path, 'rt') as inputs:
                 current_snp_index = 0
                 for line in inputs:
@@ -88,14 +95,24 @@ if __name__ == '__main__':
                     current_snp_index += 1
                     if current_snp_index < args.start_snp:
                         continue
+
                     fields = line.split()
+                    batch_start = SAMPLES_START_COLUMN + (batch_index * batch_size)
+                    batch_end = batch_start + batch_size
+                    variant_genotypes = fields[batch_start:batch_end]
+
                     # separate the two haplotypes for each sample genotype
-                    sample_haplotyes = split_haplotypes(fields[SAMPLES_START_COLUMN + index])
-                    first_haplotype.append(sample_haplotyes[0])
-                    second_haplotype.append(sample_haplotyes[1])
+                    variant_haps = [split_haplotypes(g) for g in variant_genotypes]
+
+                    for in_batch_index, sample in enumerate(batch_samples):
+                        batch_haplotypes[first_haplotype_name(sample)].append(
+                            variant_haps[in_batch_index][0]
+                        )
+                        batch_haplotypes[second_haplotype_name(sample)].append(
+                            variant_haps[in_batch_index][1]
+                        )
 
                     if current_snp_index == args.end_snp:
                         break # exit after the ending SNP is processed
-
-            out_file.write(first_haplotype_name(sample) + '\t' + '\t'.join(first_haplotype) + '\n')
-            out_file.write(second_haplotype_name(sample) + '\t' + '\t'.join(second_haplotype) + '\n')
+            for sample_id in batch_haplotypes:
+                out_file.write(sample_id + '\t' + '\t'.join(batch_haplotypes[sample_id]) + '\n')
