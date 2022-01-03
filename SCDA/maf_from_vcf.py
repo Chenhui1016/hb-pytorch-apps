@@ -1,6 +1,7 @@
 import argparse
 import re
 import gzip
+from tqdm import tqdm
 
 
 parser = argparse.ArgumentParser(
@@ -26,7 +27,7 @@ if __name__ == '__main__':
     results = {}
     print('Extracting mafs...')
     with gzip.open(input_path, 'rt') as inputs:
-        for line in inputs:
+        for line in tqdm(inputs):
             if line[0] != '#':
                 fields = line.split()
                 chromosome = fields[0]
@@ -41,4 +42,4 @@ if __name__ == '__main__':
     print(f'Writing mafs to {output_path}')
     with open(output_path, 'wt') as out_file:
         for id in results:
-            out_file.write(f'{id},{results[id]}\n')
+            out_file.write(f'{id}\t{results[id]}\n')
