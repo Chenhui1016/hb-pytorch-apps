@@ -470,7 +470,6 @@ def plot_metric(
     plt.legend()
     if results_path:
         plt.savefig(f'{results_path}/{dataset}-{metric}.svg')
-    # plt.show(block=True)
     plt.show(block=True)
     #plt.savefig(f'Results/{dataset}_{metric}_history.png')
 
@@ -584,7 +583,7 @@ if __name__ == '__main__':
     training_one_hot = nn.functional.one_hot(training_tensor).float()
 
     # this is only necessary for the training set because during
-    valid_indexes = find_valid_snps(training_one_hot)
+    '''valid_indexes = find_valid_snps(training_one_hot)
     if len(valid_indexes) == 0:
         sys.exit('No valid SNPs found in the training set')
     print(f'Number of invalid SNPs: {training_one_hot.size(1) - len(valid_indexes)}')
@@ -594,6 +593,11 @@ if __name__ == '__main__':
     training_one_hot = training_one_hot[:, valid_indexes, :]
 
     validation_tensor = dataframe_to_tensor(valid_df)[:, valid_indexes]
+    validation_one_hot = nn.functional.one_hot(validation_tensor).float()'''
+
+    snp_ids = whole_dataframe.columns.values
+    
+    validation_tensor = dataframe_to_tensor(valid_df)
     validation_one_hot = nn.functional.one_hot(validation_tensor).float()
 
     # TODO: extract valid SNPs from the test set too
