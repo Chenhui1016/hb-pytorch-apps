@@ -46,4 +46,4 @@ if __name__ == '__main__':
     with open(output_path, 'w') as out_file:
         snp_ids = data_frame.columns.to_list()
         for index, id in enumerate(snp_ids):
-            out_file.write(f'{id},{mafs[index]}\n')
+            out_file.write(f'{id}\t{mafs[index]}\n')

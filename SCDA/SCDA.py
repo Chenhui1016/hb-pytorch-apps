@@ -560,7 +560,7 @@ if __name__ == '__main__':
 
     input_path = args.input
     whole_dataframe = pd.read_csv(input_path, sep='\t', index_col=0)
-    mafs = pd.read_csv(args.mafs_path, header=None, index_col=0)
+    mafs = pd.read_csv(args.mafs_path, header=None, sep='\t', index_col=0)
 
     # make it fit for HammerBlade
     if args.hammerblade:
