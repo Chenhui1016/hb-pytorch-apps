@@ -570,6 +570,8 @@ if __name__ == '__main__':
     print('Sample data:')
     print(whole_dataframe.head())
 
+    one_hot_channels = whole_dataframe.max().max() + 1
+
     # TODO: chekc if the stratify param can be used for class imbalance
     # train / validation / test split
     learning_df, test_df = train_test_split(
@@ -580,7 +582,7 @@ if __name__ == '__main__':
     )
 
     training_tensor = dataframe_to_tensor(train_df)
-    training_one_hot = nn.functional.one_hot(training_tensor).float()
+    training_one_hot = nn.functional.one_hot(training_tensor, one_hot_channels).float()
 
     # this is only necessary for the training set because during
     '''valid_indexes = find_valid_snps(training_one_hot)
@@ -598,7 +600,7 @@ if __name__ == '__main__':
     snp_ids = whole_dataframe.columns.values
     
     validation_tensor = dataframe_to_tensor(valid_df)
-    validation_one_hot = nn.functional.one_hot(validation_tensor).float()
+    validation_one_hot = nn.functional.one_hot(validation_tensor, one_hot_channels).float()
 
     # TODO: extract valid SNPs from the test set too
 
