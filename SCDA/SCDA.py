@@ -574,6 +574,15 @@ def find_valid_snps(one_hot_data):
     total_samples, total_snps, total_classes = one_hot_data.size()
     samples_per_variant, _ = one_hot_data.sum(dim=0).max(dim=1)
     valid_indexes = np.argwhere(samples_per_variant.numpy()!=total_samples).reshape(-1,)
+    return valid_indexes
+
+# Find SNPs that have at least 1% MAF
+def snps_above_maf_threshold(snp_ids, mafs):
+    valid_indexes = np.argwhere(mafs[1][snp_ids].values >= 0.01).reshape(-1,)
+    return valid_indexes
+
+# Make features length a multiple of 4 to prevent errors with pooling
+def adjust_length_for_pooling(valid_indexes):
     offset = valid_indexes.shape[0]%4
     if offset == 0:
         return valid_indexes
@@ -615,8 +624,11 @@ if __name__ == '__main__':
     training_tensor = dataframe_to_tensor(train_df)
     training_one_hot = nn.functional.one_hot(training_tensor, one_hot_channels).float()
 
-    # this is only necessary for the training set because during
-    valid_indexes = find_valid_snps(training_one_hot)
+    # valid_indexes = find_valid_snps(training_one_hot)
+    # valid_indexes = snps_above_maf_threshold(whole_dataframe.columns.values, mafs)
+    valid_indexes = np.array(range(len(whole_dataframe.columns.values))) # HACK in case we want to use the filter again in the future
+
+    valid_indexes = adjust_length_for_pooling(valid_indexes)
     if len(valid_indexes) == 0:
         sys.exit('No valid SNPs found in the training set')
     print(f'Number of invalid SNPs: {training_one_hot.size(1) - len(valid_indexes)}')
