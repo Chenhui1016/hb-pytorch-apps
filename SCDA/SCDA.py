@@ -447,6 +447,33 @@ def get_loss_by_maf(
 
     return loss_by_maf, metrics_by_maf
 
+def plot_loss(
+        histories, dataset, results_path=None
+    ):
+    history = histories[dataset]
+    # split by MAF
+    loss_history = {
+        bucket: [] for bucket in history[0]
+    }
+    # extract score for all epochs for the requested metric
+    for epoch_loss in history:
+        for bucket in epoch_loss:
+            loss_history[bucket].append(
+                epoch_loss[bucket]
+            )
+    plt.figure()
+    for bucket in loss_history:
+        line = loss_history[bucket]
+        plt.plot(range(len(history)), line, label=bucket)
+
+    plt.title(f'{dataset} Loss history')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend(title='MAF range')
+    if results_path:
+        plt.savefig(f'{results_path}/{dataset}-loss.svg')
+    plt.show(block=True)
+
 def plot_metric(
         histories, dataset, metric, average_type='macro', results_path=None
     ):
@@ -467,7 +494,9 @@ def plot_metric(
         plt.plot(range(len(history)), line, label=bucket)
 
     plt.title(f'{dataset} {metric} history')
-    plt.legend()
+    plt.xlabel('Epoch')
+    plt.ylabel(metric)
+    plt.legend(title='MAF range')
     if results_path:
         plt.savefig(f'{results_path}/{dataset}-{metric}.svg')
     # plt.show(block=True)
@@ -720,6 +749,10 @@ if __name__ == '__main__':
         'training': [],
         'validation': []
     }
+    loss_history = {
+        'training': [],
+        'validation': []
+    }
     for epoch in range(args.max_epochs):
         model.train()
         losses_for_display = []
@@ -751,6 +784,7 @@ if __name__ == '__main__':
             'training', epoch, losses_for_display, accuracies,
             metrics_by_snp, mafs, snp_ids
         )
+        loss_history['training'].append(loss_by_maf)
         history['training'].append(metrics_by_maf)
 
         # validation
@@ -775,6 +809,7 @@ if __name__ == '__main__':
             'validation', epoch, losses_for_display, accuracies,
             metrics_by_snp, mafs, snp_ids
         )
+        loss_history['validation'].append(loss_by_maf)
         history['validation'].append(metrics_by_maf)
 
     end_time = time.time()
@@ -784,17 +819,21 @@ if __name__ == '__main__':
     )
 
     if results_path:
-        with open(f'{results_path}/aggregated-metrics-history.txt', 'w') as model_file:
+        with open(f'{results_path}/metrics-history.txt', 'w') as model_file:
             model_file.write(str(history))
+        with open(f'{results_path}/loss-history.txt', 'w') as model_file:
+            model_file.write(str(loss_history))
 
     if args.plot:
+        plot_loss(loss_history, 'training', results_path=results_path)
         plot_metric(history, 'training', 'mcc', results_path=results_path)
         plot_metric(history, 'training', 'accuracy', results_path=results_path)
-        plot_metric(history, 'training', 'precision', results_path=results_path)
-        plot_metric(history, 'training', 'recall', results_path=results_path)
-        plot_metric(history, 'training', 'f1-score', results_path=results_path)
+        # plot_metric(history, 'training', 'precision', results_path=results_path)
+        # plot_metric(history, 'training', 'recall', results_path=results_path)
+        # plot_metric(history, 'training', 'f1-score', results_path=results_path)
+        plot_loss(loss_history, 'validation', results_path=results_path)
         plot_metric(history, 'validation', 'mcc', results_path=results_path)
         plot_metric(history, 'validation', 'accuracy', results_path=results_path)
-        plot_metric(history, 'validation', 'precision', results_path=results_path)
-        plot_metric(history, 'validation', 'recall', results_path=results_path)
-        plot_metric(history, 'validation', 'f1-score', results_path=results_path)
+        # plot_metric(history, 'validation', 'precision', results_path=results_path)
+        # plot_metric(history, 'validation', 'recall', results_path=results_path)
+        # plot_metric(history, 'validation', 'f1-score', results_path=results_path)
