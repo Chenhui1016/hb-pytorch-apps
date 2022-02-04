@@ -558,7 +558,7 @@ class MissingDataset(torch.utils.data.Dataset):
         np.random.shuffle(self.snp_indexes)
         snp_idx = self.snp_indexes[:self.amount]
         if self.high:
-            noisy_input = self.miss_vec
+            noisy_input = self.miss_vec.clone()
             #noisy_input[:,snp_idx] = self.one_hot_targets[index,:,snp_idx].detach().clone()
             noisy_input[:,snp_idx] = self.one_hot_targets[index,:,snp_idx]
         else:

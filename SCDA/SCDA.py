@@ -533,21 +533,52 @@ class LowMissingDataset(torch.utils.data.Dataset):
                 noisy_input[c][snp_index] = 0.0
         return noisy_input, int_target
 
+# fast way for missing data generation
+class MissingDataset(torch.utils.data.Dataset):
+    def __init__(self, one_hot_targets, int_targets, missing_perc):
+        self.one_hot_targets = one_hot_targets
+        self.int_targets = int_targets
+        self.missing_perc = missing_perc
+        if missing_perc > 0.5:
+            self.high = True
+            self.amount = int((1-missing_perc) * one_hot_targets.size(-1))
+            self.miss_vec = torch.zeros((one_hot_targets.size(1), one_hot_targets.size(-1)))
+        else:
+            self.high = False
+            self.amount = int(missing_perc * one_hot_targets.size(-1))
+            self.miss_vec = torch.zeros((one_hot_targets.size(1), 1))
+        self.miss_vec[0,:] = 1.0
+        self.snp_indexes = list(range(one_hot_targets.size(-1)))
+
+    def __len__(self):
+        return len(self.one_hot_targets)
+
+    def __getitem__(self, index):
+        int_target = self.int_targets[index]
+        np.random.shuffle(self.snp_indexes)
+        snp_idx = self.snp_indexes[:self.amount]
+        if self.high:
+            noisy_input = self.miss_vec.clone()
+            #noisy_input[:,snp_idx] = self.one_hot_targets[index,:,snp_idx].detach().clone()
+            noisy_input[:,snp_idx] = self.one_hot_targets[index,:,snp_idx]
+        else:
+            noisy_input = self.one_hot_targets[index].detach().clone()
+            noisy_input[:,snp_idx] = self.miss_vec
+
+        return noisy_input, int_target
+
+
 # Find SNPs that have at least 2 variants in the training set;
 # the invalid ones (with a single variant) arise due to the dataset splitting
 def find_valid_snps(one_hot_data):
-    valid_indexes = []
     total_samples, total_snps, total_classes = one_hot_data.size()
-    samples_per_variant = one_hot_data.sum(dim=0)
-    for index in range(total_snps):
-        valid = True
-        for in_variant in samples_per_variant[index]:
-            if in_variant == total_samples:
-                valid = False
-                break
-        if valid:
-            valid_indexes += [index]
-    return valid_indexes
+    samples_per_variant, _ = one_hot_data.sum(dim=0).max(dim=1)
+    valid_indexes = np.argwhere(samples_per_variant.numpy()!=total_samples).reshape(-1,)
+    offset = valid_indexes.shape[0]%4
+    if offset == 0:
+        return valid_indexes
+    else:
+        return valid_indexes[:-offset]
 
 #-------------------------------------------------------------
 # Main
@@ -649,17 +680,12 @@ if __name__ == '__main__':
     print(f'channel-first one hot tensor: {str(training_one_hot.size())}\n')
 
     # create data loaders
-    if args.missing_perc > 0.5:
-        DataGenerator = HighMissingDataset
-    else:
-        DataGenerator = LowMissingDataset
-
-    training_set = DataGenerator(
+    training_set = MissingDataset(
         training_one_hot,
         training_tensor,
         missing_perc=args.missing_perc
     )
-    validation_set = DataGenerator(
+    validation_set = MissingDataset(
         validation_one_hot,
         validation_tensor,
         missing_perc=args.missing_perc
