@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import json
 from matplotlib import pyplot as plt
+import seaborn as sns
 from pathlib import Path
 
 # specify a seed for repeating the exact dataset splits
@@ -16,6 +17,7 @@ SEED = 28213
 torch.manual_seed(SEED)
 np.random.seed(seed=SEED)
 
+sns.set()
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -688,7 +690,7 @@ if __name__ == '__main__':
     # model = FCDAv3(
     #     num_classes, num_features, [300, 20]
     # )
-    # # init SCDA model
+    # init SCDA model
     model = SCDA(
         num_classes, args.channels, args.dropout_amount, args.filter_size
     )
