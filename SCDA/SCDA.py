@@ -330,6 +330,28 @@ class FCDAv3_Linear(nn.Module):
         return x
 
 
+#--------------------------------------------------------------#
+# Fully Connected Single Layer                                 #
+# (removed nonlinear functions)                                #
+#--------------------------------------------------------------#
+
+class FCSL(nn.Module):
+    def __init__(
+            self, num_classes, in_feats
+    ):
+        super(FCSL, self).__init__()
+        # single_layer
+        self.single_layer = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(num_classes * in_feats, num_classes * in_feats),
+            nn.Unflatten(-1, [num_classes, in_feats])
+        )
+
+    def forward(self, x):
+        x = self.single_layer(x)
+        return x
+
+
 #-------------------------------------------------------------
 # Helpers
 #-------------------------------------------------------------
@@ -796,14 +818,19 @@ if __name__ == '__main__':
     # model = FCDAv3_Linear(
     #     num_classes, num_features, [300, 20]
     # )
+    # init FCSL model
+    model = FCSL(
+        num_classes, num_features
+    )
     # init SCDA model
     # model = SCDA(
     #     num_classes, args.channels, args.dropout_amount, args.filter_size
     # )
     # init SCDA_Linear model
-    model = SCDA_Linear(
-        num_classes, args.channels, args.dropout_amount, args.filter_size
-    )
+    # model = SCDA_Linear(
+    #     num_classes, args.channels, args.dropout_amount, args.filter_size
+    # )
+
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if args.hammerblade:
         device = torch.device('hammerblade')
