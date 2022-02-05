@@ -139,6 +139,71 @@ class SCDA(nn.Module):
         x = self.decoder(x)
         return x
 
+
+#--------------------------------------------------------------#
+# Sparse Convolutional Denoising Autoencoder                   #
+# (removed nonlinear functions)                                #
+#--------------------------------------------------------------#
+
+class SCDA_Linear(nn.Module):
+    def __init__(
+            self, in_channels, hidden_channels, dropout_amount, filter_size
+    ):
+        super(SCDA_Linear, self).__init__()
+        second_channels, third_channels, fourth_channels = hidden_channels
+        pooling_factor = 2 # left fixed because other values caused crashes
+        # TODO: check if setting this to False helps with unbalanced classes
+        use_bias = True
+        # encoder
+        self.encoder = nn.Sequential(
+            nn.Conv1d(
+                in_channels, second_channels, kernel_size=filter_size,
+                bias=use_bias, padding=2
+            ),
+            # nn.ReLU(),
+            # nn.MaxPool1d(pooling_factor),
+            # nn.Dropout(dropout_amount),
+            nn.Conv1d(
+                second_channels, third_channels, kernel_size=filter_size,
+                bias=use_bias, padding=2
+            ),
+            # nn.ReLU(),
+            # nn.MaxPool1d(pooling_factor),
+            # nn.Dropout(dropout_amount)
+        )
+        # bridge
+        self.bridge = nn.Conv1d(
+            third_channels, fourth_channels, kernel_size=filter_size,
+            bias=use_bias, padding=2
+        )
+        # decoder
+        self.decoder = nn.Sequential(
+            nn.Conv1d(
+                fourth_channels, third_channels, kernel_size=filter_size,
+                bias=use_bias, padding=2
+            ),
+            # nn.ReLU(),
+            # nn.Upsample(scale_factor=pooling_factor),
+            # nn.Dropout(dropout_amount),
+            nn.Conv1d(
+                third_channels, second_channels, kernel_size=filter_size,
+                bias=use_bias, padding=2
+            ),
+            # nn.ReLU(),
+            # nn.Upsample(scale_factor=pooling_factor),
+            # nn.Dropout(dropout_amount),
+            nn.Conv1d(
+                second_channels, in_channels, kernel_size=filter_size,
+                bias=use_bias, padding=2
+            ),
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.bridge(x)
+        x = self.decoder(x)
+        return x
+
 #--------------------------------------------------------------#
 # Fully Connected Denoising Autoencoder v1                     #
 #--------------------------------------------------------------#
@@ -217,6 +282,43 @@ class FCDAv3(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(third_feats, second_feats),
             nn.ReLU(),
+            # nn.Dropout(dropout_amount),
+            nn.Linear(second_feats, num_classes * in_feats),
+            nn.Unflatten(-1, [num_classes, in_feats])
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
+
+
+#--------------------------------------------------------------#
+# Fully Connected Denoising Autoencoder v3                     #
+# (removed nonlinear functions)                                #
+#--------------------------------------------------------------#
+
+class FCDAv3_Linear(nn.Module):
+    def __init__(
+            self, num_classes, in_feats, hidden_feats
+    ):
+        second_feats, third_feats = hidden_feats
+        # dropout_amount = 0.25
+        super(FCDAv3_Linear, self).__init__()
+        # encoder
+        self.encoder = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(num_classes * in_feats, second_feats),
+            # nn.ReLU(),
+            # nn.Dropout(dropout_amount),
+            nn.Linear(second_feats, third_feats),
+            # nn.ReLU(),
+            # nn.Dropout(dropout_amount),
+        )
+        # decoder
+        self.decoder = nn.Sequential(
+            nn.Linear(third_feats, second_feats),
+            # nn.ReLU(),
             # nn.Dropout(dropout_amount),
             nn.Linear(second_feats, num_classes * in_feats),
             nn.Unflatten(-1, [num_classes, in_feats])
@@ -690,8 +792,16 @@ if __name__ == '__main__':
     # model = FCDAv3(
     #     num_classes, num_features, [300, 20]
     # )
+    # init FCDAv3_Linear model
+    # model = FCDAv3_Linear(
+    #     num_classes, num_features, [300, 20]
+    # )
     # init SCDA model
-    model = SCDA(
+    # model = SCDA(
+    #     num_classes, args.channels, args.dropout_amount, args.filter_size
+    # )
+    # init SCDA_Linear model
+    model = SCDA_Linear(
         num_classes, args.channels, args.dropout_amount, args.filter_size
     )
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
