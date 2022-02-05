@@ -9,7 +9,6 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import json
 from matplotlib import pyplot as plt
-import seaborn as sns
 from pathlib import Path
 
 # specify a seed for repeating the exact dataset splits
@@ -17,7 +16,6 @@ SEED = 28213
 torch.manual_seed(SEED)
 np.random.seed(seed=SEED)
 
-sns.set()
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -139,71 +137,6 @@ class SCDA(nn.Module):
         x = self.decoder(x)
         return x
 
-
-#--------------------------------------------------------------#
-# Sparse Convolutional Denoising Autoencoder                   #
-# (removed nonlinear functions)                                #
-#--------------------------------------------------------------#
-
-class SCDA_Linear(nn.Module):
-    def __init__(
-            self, in_channels, hidden_channels, dropout_amount, filter_size
-    ):
-        super(SCDA_Linear, self).__init__()
-        second_channels, third_channels, fourth_channels = hidden_channels
-        pooling_factor = 2 # left fixed because other values caused crashes
-        # TODO: check if setting this to False helps with unbalanced classes
-        use_bias = True
-        # encoder
-        self.encoder = nn.Sequential(
-            nn.Conv1d(
-                in_channels, second_channels, kernel_size=filter_size,
-                bias=use_bias, padding=2
-            ),
-            # nn.ReLU(),
-            # nn.MaxPool1d(pooling_factor),
-            # nn.Dropout(dropout_amount),
-            nn.Conv1d(
-                second_channels, third_channels, kernel_size=filter_size,
-                bias=use_bias, padding=2
-            ),
-            # nn.ReLU(),
-            # nn.MaxPool1d(pooling_factor),
-            # nn.Dropout(dropout_amount)
-        )
-        # bridge
-        self.bridge = nn.Conv1d(
-            third_channels, fourth_channels, kernel_size=filter_size,
-            bias=use_bias, padding=2
-        )
-        # decoder
-        self.decoder = nn.Sequential(
-            nn.Conv1d(
-                fourth_channels, third_channels, kernel_size=filter_size,
-                bias=use_bias, padding=2
-            ),
-            # nn.ReLU(),
-            # nn.Upsample(scale_factor=pooling_factor),
-            # nn.Dropout(dropout_amount),
-            nn.Conv1d(
-                third_channels, second_channels, kernel_size=filter_size,
-                bias=use_bias, padding=2
-            ),
-            # nn.ReLU(),
-            # nn.Upsample(scale_factor=pooling_factor),
-            # nn.Dropout(dropout_amount),
-            nn.Conv1d(
-                second_channels, in_channels, kernel_size=filter_size,
-                bias=use_bias, padding=2
-            ),
-        )
-
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.bridge(x)
-        x = self.decoder(x)
-        return x
-
 #--------------------------------------------------------------#
 # Fully Connected Denoising Autoencoder v1                     #
 #--------------------------------------------------------------#
@@ -282,43 +215,6 @@ class FCDAv3(nn.Module):
         self.decoder = nn.Sequential(
             nn.Linear(third_feats, second_feats),
             nn.ReLU(),
-            # nn.Dropout(dropout_amount),
-            nn.Linear(second_feats, num_classes * in_feats),
-            nn.Unflatten(-1, [num_classes, in_feats])
-        )
-
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.decoder(x)
-        return x
-
-
-#--------------------------------------------------------------#
-# Fully Connected Denoising Autoencoder v3                     #
-# (removed nonlinear functions)                                #
-#--------------------------------------------------------------#
-
-class FCDAv3_Linear(nn.Module):
-    def __init__(
-            self, num_classes, in_feats, hidden_feats
-    ):
-        second_feats, third_feats = hidden_feats
-        # dropout_amount = 0.25
-        super(FCDAv3_Linear, self).__init__()
-        # encoder
-        self.encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(num_classes * in_feats, second_feats),
-            # nn.ReLU(),
-            # nn.Dropout(dropout_amount),
-            nn.Linear(second_feats, third_feats),
-            # nn.ReLU(),
-            # nn.Dropout(dropout_amount),
-        )
-        # decoder
-        self.decoder = nn.Sequential(
-            nn.Linear(third_feats, second_feats),
-            # nn.ReLU(),
             # nn.Dropout(dropout_amount),
             nn.Linear(second_feats, num_classes * in_feats),
             nn.Unflatten(-1, [num_classes, in_feats])
@@ -486,126 +382,70 @@ def get_loss_by_maf(
     buckets = {bucket: [] for bucket in (VERY_LOW, LOW, HIGH)}
 
     # initialize loss accumulator for each MAF category
-    # loss_by_maf = {
-    #     bucket: 0.0 for bucket in buckets
-    # }
-    loss_by_maf = 0.0
+    loss_by_maf = {
+        bucket: 0.0 for bucket in buckets
+    }
 
     avg_loss_by_feat = np.mean(losses, axis=0)
 
     # initialize metrics accumulator for each MAF category
     metrics_by_maf = {}
-    # for bucket in buckets:
-    #     metrics_by_maf[bucket] = {
-    #         metric: {
-    #             'macro': 0.0,
-    #             'micro': 0.0,
-    #         } for metric in metrics_by_snp if metric != 'support'
-    #     }
+    for bucket in buckets:
+        metrics_by_maf[bucket] = {
+            metric: {
+                'macro': 0.0,
+                'micro': 0.0,
+            } for metric in metrics_by_snp if metric != 'support'
+        }
 
-    metrics_by_maf = {
-        metric: {
-            'macro': 0.0,
-            'micro': 0.0,
-        } for metric in metrics_by_snp if metric != 'support'}
-    num_snp = 0
     for index, snp_id in enumerate(snps):
         maf = mafs[1][snp_id]
-        
-        # if maf < 0.005:
-        #     bucket = VERY_LOW
-        # elif maf < 0.05:
-        #     bucket = LOW
-        # else:
-        #     bucket = HIGH
+        if maf < 0.005:
+            bucket = VERY_LOW
+        elif maf < 0.05:
+            bucket = LOW
+        else:
+            bucket = HIGH
         # TODO: see how to remove SNPs with a single variant due to dataset splitting
-        # buckets[bucket] += [index]
-        # loss_by_maf[bucket] += avg_loss_by_feat[index]
-        # for metric in metrics_by_maf[bucket]:
-        #     scores = []
-        #     supports = []
-        #     for variant in metrics_by_snp[metric]:
-        #         if metrics_by_snp['support'][variant][index] > 0:
-        #             scores += [metrics_by_snp[metric][variant][index]]
-        #             supports += [metrics_by_snp['support'][variant][index]]
-        #     macro_average = np.mean(scores)
-        #     micro_average = np.dot(scores, supports) / sum(supports)
-        #     metrics_by_maf[bucket][metric]['macro'] += macro_average
-        #     metrics_by_maf[bucket][metric]['micro'] += micro_average
-        if maf > 0.01:
-            num_snp += 1
-            loss_by_maf += avg_loss_by_feat[index]
-            for metric in metrics_by_maf:
-                scores = []
-                supports = []
-                for variant in metrics_by_snp[metric]:
-                    if metrics_by_snp['support'][variant][index] > 0:
-                        scores += [metrics_by_snp[metric][variant][index]]
-                        supports += [metrics_by_snp['support'][variant][index]]
-                macro_average = np.mean(scores)
-                micro_average = np.dot(scores, supports) / sum(supports)
-                metrics_by_maf[metric]['macro'] += macro_average
-                metrics_by_maf[metric]['micro'] += micro_average
+        buckets[bucket] += [index]
+        loss_by_maf[bucket] += avg_loss_by_feat[index]
+        for metric in metrics_by_maf[bucket]:
+            scores = []
+            supports = []
+            for variant in metrics_by_snp[metric]:
+                if metrics_by_snp['support'][variant][index] > 0:
+                    scores += [metrics_by_snp[metric][variant][index]]
+                    supports += [metrics_by_snp['support'][variant][index]]
+            macro_average = np.mean(scores)
+            micro_average = np.dot(scores, supports) / sum(supports)
+            metrics_by_maf[bucket][metric]['macro'] += macro_average
+            metrics_by_maf[bucket][metric]['micro'] += micro_average
 
-    # snps_by_category = {
-    #     bucket: len(buckets[bucket]) for bucket in buckets
-    # }
+    snps_by_category = {
+        bucket: len(buckets[bucket]) for bucket in buckets
+    }
 
     # divide by the number of SNPs in the bucket to get the average
-    # for bucket in buckets:
-    #     snps_in_category = snps_by_category[bucket]
+    for bucket in buckets:
+        snps_in_category = snps_by_category[bucket]
 
-    #     if snps_in_category > 0:
-    #         loss_by_maf[bucket] /= snps_in_category
+        if snps_in_category > 0:
+            loss_by_maf[bucket] /= snps_in_category
 
-    #         for metric in metrics_by_maf[bucket]:
-    #             metrics_by_maf[bucket][metric]['macro'] /= snps_in_category
-    #             metrics_by_maf[bucket][metric]['micro'] /= snps_in_category
+            for metric in metrics_by_maf[bucket]:
+                metrics_by_maf[bucket][metric]['macro'] /= snps_in_category
+                metrics_by_maf[bucket][metric]['micro'] /= snps_in_category
 
-    if num_snp > 0:
-        loss_by_maf /= num_snp
-        for metric in metrics_by_maf:
-            metrics_by_maf[metric]['macro'] /= num_snp
-            metrics_by_maf[metric]['micro'] /= num_snp
     print(
         f'Epoch {epoch}; {subset_name} set\n'
         f'Loss={np.mean(avg_loss_by_feat):.6f}\n'
         f'Average accuracy={np.mean(accuracies):.6f}\n'
-        # f'SNPs by MAF: {json.dumps(snps_by_category, indent=2)}\n'
-        # f'Loss by MAF (avg within bucket): {json.dumps(loss_by_maf, indent=2)}\n'
-        # f'Metrics by MAF (avg within bucket): {json.dumps(metrics_by_maf, indent=2)}\n'
-        f'Loss by MAF: {json.dumps(loss_by_maf, indent=2)}\n'
-        f'Metrics by MAF: {json.dumps(metrics_by_maf, indent=2)}\n'
+        f'SNPs by MAF: {json.dumps(snps_by_category, indent=2)}\n'
+        f'Loss by MAF (avg within bucket): {json.dumps(loss_by_maf, indent=2)}\n'
+        f'Metrics by MAF (avg within bucket): {json.dumps(metrics_by_maf, indent=2)}\n'
     )
 
     return loss_by_maf, metrics_by_maf
-
-def plot_loss(
-        histories, dataset, results_path=None
-    ):
-    history = histories[dataset]
-    # split by MAF
-    loss_history = {
-        bucket: [] for bucket in history[0]
-    }
-    # extract score for all epochs for the requested metric
-    for epoch_loss in history:
-        for bucket in epoch_loss:
-            loss_history[bucket].append(
-                epoch_loss[bucket]
-            )
-    plt.figure()
-    for bucket in loss_history:
-        line = loss_history[bucket]
-        plt.plot(range(len(history)), line, label=bucket)
-
-    plt.title(f'{dataset} Loss history')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend(title='MAF range')
-    if results_path:
-        plt.savefig(f'{results_path}/{dataset}-loss.svg')
-    plt.show(block=True)
 
 def plot_metric(
         histories, dataset, metric, average_type='macro', results_path=None
@@ -627,13 +467,11 @@ def plot_metric(
         plt.plot(range(len(history)), line, label=bucket)
 
     plt.title(f'{dataset} {metric} history')
-    plt.xlabel('Epoch')
-    plt.ylabel(metric)
-    plt.legend(title='MAF range')
+    plt.legend()
     if results_path:
         plt.savefig(f'{results_path}/{dataset}-{metric}.svg')
+    # plt.show(block=True)
     plt.show(block=True)
-    #plt.savefig(f'Results/{dataset}_{metric}_history.png')
 
 # this approach is faster when the percentage of missing SNPs in the
 # generated noisy input is high
@@ -729,22 +567,12 @@ class MissingDataset(torch.utils.data.Dataset):
 
         return noisy_input, int_target
 
-
 # Find SNPs that have at least 2 variants in the training set;
 # the invalid ones (with a single variant) arise due to the dataset splitting
 def find_valid_snps(one_hot_data):
     total_samples, total_snps, total_classes = one_hot_data.size()
     samples_per_variant, _ = one_hot_data.sum(dim=0).max(dim=1)
     valid_indexes = np.argwhere(samples_per_variant.numpy()!=total_samples).reshape(-1,)
-    return valid_indexes
-
-# Find SNPs that have at least 1% MAF
-def snps_above_maf_threshold(snp_ids, mafs):
-    valid_indexes = np.argwhere(mafs[1][snp_ids].values >= 0.01).reshape(-1,)
-    return valid_indexes
-
-# Make features length a multiple of 4 to prevent errors with pooling
-def adjust_length_for_pooling(valid_indexes):
     offset = valid_indexes.shape[0]%4
     if offset == 0:
         return valid_indexes
@@ -763,10 +591,6 @@ if __name__ == '__main__':
     input_path = args.input
     whole_dataframe = pd.read_csv(input_path, sep='\t', index_col=0)
     mafs = pd.read_csv(args.mafs_path, header=None, sep='\t', index_col=0)
-    print("yyyyyyyyyyyyy")
-    a = whole_dataframe.columns.values
-    print(mafs[1][a[0]])
-    sys.exit()
 
     # make it fit for HammerBlade
     if args.hammerblade:
@@ -791,12 +615,7 @@ if __name__ == '__main__':
     training_one_hot = nn.functional.one_hot(training_tensor, one_hot_channels).float()
 
     # this is only necessary for the training set because during
-    
-    # valid_indexes = find_valid_snps(training_one_hot)
-    # valid_indexes = snps_above_maf_threshold(whole_dataframe.columns.values, mafs)
-    valid_indexes = np.array(range(len(whole_dataframe.columns.values))) # HACK in case we want to use the filter again in the future
-
-    valid_indexes = adjust_length_for_pooling(valid_indexes)
+    valid_indexes = find_valid_snps(training_one_hot)
     if len(valid_indexes) == 0:
         sys.exit('No valid SNPs found in the training set')
     print(f'Number of invalid SNPs: {training_one_hot.size(1) - len(valid_indexes)}')
@@ -806,12 +625,13 @@ if __name__ == '__main__':
     training_one_hot = training_one_hot[:, valid_indexes, :]
 
     validation_tensor = dataframe_to_tensor(valid_df)[:, valid_indexes]
-    validation_one_hot = nn.functional.one_hot(validation_tensor).float()
+    validation_one_hot = nn.functional.one_hot(validation_tensor, one_hot_channels).float()
 
     # TODO: extract valid SNPs from the test set too
 
     print(f'training set shape: {str(training_one_hot.size())}')
     print(f'validation set shape: {str(validation_one_hot.size())}')
+    #sys.exit()
 
     num_samples, num_features, num_classes = training_one_hot.size()
 
@@ -827,18 +647,10 @@ if __name__ == '__main__':
     # model = FCDAv3(
     #     num_classes, num_features, [300, 20]
     # )
-    # init FCDAv3_Linear model
-    # model = FCDAv3_Linear(
-    #     num_classes, num_features, [300, 20]
-    # )
-    # init SCDA model
+    # # init SCDA model
     model = SCDA(
         num_classes, args.channels, args.dropout_amount, args.filter_size
     )
-    # init SCDA_Linear model
-    # model = SCDA_Linear(
-    #     num_classes, args.channels, args.dropout_amount, args.filter_size
-    # )
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     if args.hammerblade:
         device = torch.device('hammerblade')
@@ -868,12 +680,18 @@ if __name__ == '__main__':
     print(f'channel-first one hot tensor: {str(training_one_hot.size())}\n')
 
     # create data loaders
-    training_set = MissingDataset(
+    if args.missing_perc > 0.5:
+        DataGenerator = MissingDataset
+        #DataGenerator = HighMissingDataset
+    else:
+        DataGenerator = LowMissingDataset
+
+    training_set = DataGenerator(
         training_one_hot,
         training_tensor,
         missing_perc=args.missing_perc
     )
-    validation_set = MissingDataset(
+    validation_set = DataGenerator(
         validation_one_hot,
         validation_tensor,
         missing_perc=args.missing_perc
@@ -893,10 +711,6 @@ if __name__ == '__main__':
 
     time_before_training = time.time()
     history = {
-        'training': [],
-        'validation': []
-    }
-    loss_history = {
         'training': [],
         'validation': []
     }
@@ -931,7 +745,6 @@ if __name__ == '__main__':
             'training', epoch, losses_for_display, accuracies,
             metrics_by_snp, mafs, snp_ids
         )
-        loss_history['training'].append(loss_by_maf)
         history['training'].append(metrics_by_maf)
 
         # validation
@@ -956,7 +769,6 @@ if __name__ == '__main__':
             'validation', epoch, losses_for_display, accuracies,
             metrics_by_snp, mafs, snp_ids
         )
-        loss_history['validation'].append(loss_by_maf)
         history['validation'].append(metrics_by_maf)
 
     end_time = time.time()
@@ -966,21 +778,17 @@ if __name__ == '__main__':
     )
 
     if results_path:
-        with open(f'{results_path}/metrics-history.txt', 'w') as model_file:
+        with open(f'{results_path}/aggregated-metrics-history.txt', 'w') as model_file:
             model_file.write(str(history))
-        with open(f'{results_path}/loss-history.txt', 'w') as model_file:
-            model_file.write(str(loss_history))
 
     if args.plot:
-        plot_loss(loss_history, 'training', results_path=results_path)
         plot_metric(history, 'training', 'mcc', results_path=results_path)
         plot_metric(history, 'training', 'accuracy', results_path=results_path)
-        # plot_metric(history, 'training', 'precision', results_path=results_path)
-        # plot_metric(history, 'training', 'recall', results_path=results_path)
-        # plot_metric(history, 'training', 'f1-score', results_path=results_path)
-        plot_loss(loss_history, 'validation', results_path=results_path)
+        plot_metric(history, 'training', 'precision', results_path=results_path)
+        plot_metric(history, 'training', 'recall', results_path=results_path)
+        plot_metric(history, 'training', 'f1-score', results_path=results_path)
         plot_metric(history, 'validation', 'mcc', results_path=results_path)
         plot_metric(history, 'validation', 'accuracy', results_path=results_path)
-        # plot_metric(history, 'validation', 'precision', results_path=results_path)
-        # plot_metric(history, 'validation', 'recall', results_path=results_path)
-        # plot_metric(history, 'validation', 'f1-score', results_path=results_path)
+        plot_metric(history, 'validation', 'precision', results_path=results_path)
+        plot_metric(history, 'validation', 'recall', results_path=results_path)
+        plot_metric(history, 'validation', 'f1-score', results_path=results_path)
