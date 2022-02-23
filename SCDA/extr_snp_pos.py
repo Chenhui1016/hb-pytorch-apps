@@ -1,5 +1,6 @@
 import pandas as pd 
-import numpy as np 
+import csv
+import os
 import argparse
 
 parser = argparse.ArgumentParser(
@@ -14,7 +15,9 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument(
     'input',
-    help='path to the Manifest File (csv)'
+    help='''path to the Manifest File (csv) 
+    https://webdata.illumina.com/downloads/productfiles/humanomni25/v1-5/infinium-omni2-5-8v1-5-a1-manifest-file-csv.zip
+    '''
 )
 
 parser.add_argument(
@@ -26,17 +29,24 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     input_path = args.input
-    output_path = args.output
+    output_dir = args.output
 
     df = pd.read_csv(input_path, header=7, usecols=[1,9,10,13]) 
 
     df.columns = ["ID","CHROM","POS","SRC"]
     
     df = df[["CHROM","POS","ID","SRC"]]
-    
-    df.index = range(1,len(df)+1)
+
+    n = 0
+
+    for chr in df["CHROM"]:
+        with open(f"{output_dir}Chr{chr}_chip_snp.csv", mode='wt') as csvfile:
+            csvwriter = csv.writer(csvfile)
+
+            if os.stat(f"{output_dir}/Chr{chr}_chip_snp.csv").st_size == 0:
+                csvwriter.writerow(["Chrom","Pos","ID","Src"])
+            csvwriter.writerow(df.iloc[n])
+        n += 1
 
     print(df.head())
-    
-    df.to_csv(output_path)
 
